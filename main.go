@@ -3,6 +3,7 @@ package main
 import (
   "fmt"
   "github.com/navetacandra/oide/lib/server"
+  "github.com/navetacandra/oide/lib/server/git" // credits: https://github.com/asim
   "net/http"
   "database/sql"
   _ "github.com/lib/pq"
@@ -22,7 +23,7 @@ func GetConnection(host string, port int, user string, password string, dbname s
 }
 
 func main() {
-  db := GetConnection("localhost", 5432, "postgres", "postgres", "oide")
+  // db := GetConnection("localhost", 5432, "postgres", "postgres", "oide")
 
   http.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
     server.HandleSubdomain(domain, "", w, r, func(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +34,13 @@ func main() {
         fmt.Fprintf(w, "Hello, World!")
       })
     })
+
+    server.HandleSubdomain(domain, "git", w, r, func(w http.ResponseWriter, r *http.Request) {
+      git.Handler(w, r, func(dir string, repo string, branch string) {
+        fmt.Printf("Pushed to %s:%s to %s", repo, branch, dir)
+      })
+    })
+    
     server.HandleSubdomain(domain, "proxy", w, r, func(w http.ResponseWriter, r *http.Request) {
       server.HandleProxy(w, r, "http://localhost:8080")
     })

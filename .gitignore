@@ -1,1 +1,4 @@
 build/
+repos/
+*.out
+*.log
