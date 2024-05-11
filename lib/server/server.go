@@ -4,12 +4,21 @@ import (
 	"fmt"
 	"io"
 	"log"
+  "regexp"
 	"net/http"
-	"strings"
-	"time"
+  "strings"
+  "time"
 )
 
+var re = regexp.MustCompile(`^((.*)\.)?localhost(:\d+)$`)
 func ParseSubdomain(domain string, r *http.Request) string {
+  if domain != "localhost" {
+    isLocalhost := re.MatchString(r.Host)
+    if isLocalhost {
+      domain = "localhost"
+    }
+  }
+
   hostname := strings.Split(r.Host, ":")[0]
   if domain == hostname {
     return ""
