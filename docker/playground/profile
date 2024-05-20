@@ -1,0 +1,74 @@
+#!/bin/sh
+PS1='\u@\h:\w\# '
+
+create_project() {
+  local PROJECT_TYPE="$1"
+  local PROJECT_NAME="$2"
+  local PROJECT_PATH="/projects/$PROJECT_NAME"
+  local CURRENT_PWD="$PWD"
+  if [ ! -d "$PROJECT_PATH" ]; then
+    case "$PROJECT_TYPE" in
+      "nodejs")
+        mkdir $PROJECT_PATH && 
+          cd $PROJECT_PATH && 
+          npm init -y && 
+          echo "console.log(\"Hello World!\")" >> index.js &&
+          echo "START=\"npm start\"" >> Procfile &&
+          cd $CURRENT_PWD
+      ;;
+      "laravel")
+        mkdir $PROJECT_PATH &&
+          cd $PROJECT_PATH && 
+          composer create-project laravel/laravel $PROJECT_PATH --prefer-dist &&
+          cd $PROJECT_PATH && 
+          sed -i -e "s/APP_NAME=/SERVER_HOST=0.0.0.0\nAPP_NAME=/" .env &&
+          echo "START=\"php artisan serve\"" >> Procfile &&
+          cd $CURRENT_PWD
+      ;;
+      "python")
+        mkdir $PROJECT_PATH && 
+          cd $PROJECT_PATH && 
+          poetry init -n && 
+          echo "print(\"Hello World!\")" >> main.py &&
+          echo "START=\"python3 main.py\"" >> Procfile &&
+          cd $CURRENT_PWD
+      ;;
+      *)
+        echo "Invalid project type"
+      ;;
+    esac
+  else
+    echo "Project with name \"$PROJECT_NAME\" already exists"
+  fi
+}
+
+project_run() {
+  local PROJECT_NAME="$1"
+  local PROJECT_PATH="/projects/$PROJECT_NAME"
+  if [ -d "$PROJECT_PATH" ] && [ -f "$PROJECT_PATH/Procfile" ]; then
+    cd $PROJECT_PATH
+    local PREPARE="$(echo "$(grep -m 1 '^PREPARE=' $PROJECT_PATH/Procfile | cut -d '=' -f2-)" | tr -d '"')"
+    local BUILD="$(echo "$(grep -m 1 '^BUILD=' $PROJECT_PATH/Procfile | cut -d '=' -f2-)" | tr -d '"')"
+    local START="$(echo "$(grep -m 1 '^START=' $PROJECT_PATH/Procfile | cut -d '=' -f2-)" | tr -d '"')"
+    if [ -n "${PREPARE:-}" ]; then
+      echo "Run prepare script: '$PREPARE'"
+      eval "$PREPARE"
+    fi
+    if [ -n "${BUILD:-}" ]; then
+      echo "Run build script: '$BUILD'"
+      eval "$BUILD"
+    fi
+    if [ -n "${START:-}" ]; then
+      echo "Runing with script: '$START'"
+      eval "$START"
+    fi
+  fi
+}
+
+apache_start() {
+  httpd -D BACKGROUND
+}
+
+apache_stop() {
+  pkill httpd
+}
