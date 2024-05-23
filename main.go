@@ -1,12 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"regexp"
-	"github.com/navetacandra/oide/lib/server"
 	"database/sql"
+	"fmt"
 	"net/http"
+	"regexp"
+	"time"
+
 	_ "github.com/lib/pq"
+	"github.com/navetacandra/oide/lib/cloudshell"
+	"github.com/navetacandra/oide/lib/server"
 	"github.com/navetacandra/oide/lib/server/git" // credits: https://github.com/asim
 )
 
@@ -49,6 +52,11 @@ func main() {
       git.Handler(w, r, func(dir string, repo string, branch string) {
         fmt.Printf("Pushed to %s:%s to %s", repo, branch, dir)
       })
+      handled = true
+    })
+
+    server.HandleSubdomain(domain, "ssh", w, r, func(w http.ResponseWriter, r *http.Request) {
+      cloudshell.Handle(w, r, 10 * time.Second, []string{"bash", "-l"})
       handled = true
     })
 
