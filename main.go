@@ -111,25 +111,24 @@ func main() {
       handled = true
     })
 
-    if handled {
-      return
-    }
-
-    subdomain := server.ParseSubdomain(domain, r)
-    dockerProxy := dockerProxyPattern.FindStringSubmatch(subdomain)
-    
-    if dockerProxy != nil {
+    server.HandleSubdomainRegexp(domain, dockerProxyPattern, w, r, func(w http.ResponseWriter, r *http.Request, match []string) {
       var ip string
-      row := db.QueryRow("SELECT container_ip FROM containers WHERE user_id=(SELECT id FROM users WHERE username=$1)", dockerProxy[1])
+      row := db.QueryRow("SELECT container_ip FROM containers WHERE user_id=(SELECT id FROM users WHERE username=$1)", match[1])
       err := row.Scan(&ip)
 
       if err != nil {
         http.Error(w, fmt.Sprintf("Failed get container: %s", err.Error()), http.StatusInternalServerError)
         return
       }
+      server.HandleProxy(w, r, fmt.Sprintf("http://%s:%s", ip, match[2]))
+      handled = true
+    })
 
-      server.HandleProxy(w, r, fmt.Sprintf("http://%s:%s", ip, dockerProxy[2]))
+    if handled {
+      return
     }
+
+    http.NotFound(w, r)
   })
 
   err := http.ListenAndServe(":8080", nil)

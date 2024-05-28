@@ -33,6 +33,14 @@ func HandleSubdomain(domain string, subdomain string, w http.ResponseWriter, r *
   }
 }
 
+func HandleSubdomainRegexp(domain string, subdomain *regexp.Regexp, w http.ResponseWriter, r *http.Request, handler func(w http.ResponseWriter, r *http.Request, match []string)) {
+  sub := ParseSubdomain(domain, r)
+  match := subdomain.FindStringSubmatch(sub)
+  if match != nil {
+    handler(w, r, match)
+  }
+}
+
 func HandlePath(path string, w http.ResponseWriter, r *http.Request, handler func(w http.ResponseWriter, r *http.Request)) {
   if r.URL.Path == path {
     handler(w, r)
