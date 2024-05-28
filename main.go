@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"time"
 
@@ -13,8 +14,14 @@ import (
 	"github.com/navetacandra/oide/lib/server/git" // credits: https://github.com/asim
 )
 
+type FileCache struct {
+  path string
+  content []byte
+}
+
 const domain = "navetacandraa.my.id"
 var dockerProxyPattern = regexp.MustCompile(`^([\d\w]+)\-(\d+)$`)
+var caches = []FileCache{}
 
 func GetConnection(host string, port int, user string, password string, dbname string) *sql.DB {
   db, err := sql.Open(
@@ -27,18 +34,57 @@ func GetConnection(host string, port int, user string, password string, dbname s
   return db
 }
 
+func GetFile(path string) ([]byte, error) {
+  for _, file := range caches {
+    if file.path == path {
+      return file.content, nil
+    }
+  }
+  content, err := os.ReadFile(path)
+  if err != nil {
+    return nil, err
+  }
+  caches = append(caches, FileCache{path, content})
+  return content, nil
+}
+
+func PreventDirTree(fs http.Handler) http.HandlerFunc {
+  return func(w http.ResponseWriter, r *http.Request) {
+    subdomain := server.ParseSubdomain(domain, r)
+    if subdomain == "" {
+      if r.URL.Path[len(r.URL.Path)-1] == '/' {
+        http.NotFound(w, r)
+        return
+      }
+      fs.ServeHTTP(w, r)
+      return
+    }
+    http.NotFound(w, r)
+  }
+}
+
+func RenderHtml(path string) func(http.ResponseWriter, *http.Request) {
+  return func(w http.ResponseWriter, r *http.Request) {
+    content, err := GetFile(path)
+    if err != nil {
+      http.Error(w, err.Error(), http.StatusInternalServerError)
+      return
+    }
+    fmt.Fprintf(w, string(content))
+  }
+}
+
 func main() {
   db := GetConnection("localhost", 5432, "postgres", "postgres", "oide")
   defer db.Close()
 
-  // docker.CreateDocker(db, "navetacandra")
+  assetsFile := http.FileServer(http.Dir("./web/assets/"))
+  http.Handle("/assets/*", PreventDirTree(http.StripPrefix("/assets/", assetsFile)))
 
   http.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
     handled := false
     server.HandleSubdomain(domain, "", w, r, func(w http.ResponseWriter, r *http.Request) {
-      server.HandlePath("/", w, r, func(w http.ResponseWriter, r *http.Request) {   
-        fmt.Fprintf(w, "Hello, World!\nAccess in: %s", server.ParseSubdomain(domain, r))
-      })
+      server.HandlePath("/", w, r, RenderHtml("./web/home.html"))
       server.HandlePath("/hello", w, r, func(w http.ResponseWriter, r *http.Request) {
         fmt.Fprintf(w, "Hello, World!")
       })
