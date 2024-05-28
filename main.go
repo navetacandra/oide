@@ -82,53 +82,53 @@ func main() {
   http.Handle("/assets/*", PreventDirTree(http.StripPrefix("/assets/", assetsFile)))
 
   http.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-    handled := false
-    server.HandleSubdomain(domain, "", w, r, func(w http.ResponseWriter, r *http.Request) {
-      server.HandlePath("/", w, r, RenderHtml("./web/home.html"))
-      server.HandlePath("/hello", w, r, func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, "Hello, World!")
-      })
-      server.HandlePath("/error", w, r, func(w http.ResponseWriter, r *http.Request) {
-        http.Error(w, "Error aja", http.StatusInternalServerError)
-      })
-      handled = true
-    })
+    handled := 
+    server.HandlerChain(
+      server.HandleSubdomain(domain, "", func(w http.ResponseWriter, r *http.Request) bool {
+        if 
+        !server.HandlerChain(
+          server.HandlePath("/", RenderHtml("./web/home.html")),
+          server.HandlePath("/hello", func(w http.ResponseWriter, r *http.Request) {
+            fmt.Fprintf(w, "Hello, World!")
+          }),
+          server.HandlePath("/error", func(w http.ResponseWriter, r *http.Request) {
+            http.Error(w, "Error aja", http.StatusInternalServerError)
+          }),
+        )(w, r) {
+          http.NotFound(w, r)
+        }
 
-    server.HandleSubdomain(domain, "git", w, r, func(w http.ResponseWriter, r *http.Request) {
-      git.Handler(w, r, func(dir string, repo string, branch string) {
-        fmt.Printf("Pushed to %s:%s to %s", repo, branch, dir)
-      })
-      handled = true
-    })
+        return true
+      }),
 
-    server.HandleSubdomain(domain, "ssh", w, r, func(w http.ResponseWriter, r *http.Request) {
-      cloudshell.Handle(w, r, 10 * time.Second, []string{"bash", "-l"})
-      handled = true
-    })
+      server.HandleSubdomain(domain, "proxy", func(w http.ResponseWriter, r *http.Request) bool {
+        git.Handler(w, r, func(dir string, repo string, branch string) {
+          fmt.Printf("Pushed to %s:%s to %s", repo, branch, dir)
+        })
+        return true
+      }),
 
-    server.HandleSubdomain(domain, "proxy", w, r, func(w http.ResponseWriter, r *http.Request) {
-      server.HandleProxy(w, r, "http://localhost:8080")
-      handled = true
-    })
+      server.HandleSubdomain(domain, "ssh", func(w http.ResponseWriter, r *http.Request) bool {
+        cloudshell.Handle(w, r, 10 * time.Second, []string{"bash", "-l"})
+        return true
+      }),
 
-    server.HandleSubdomainRegexp(domain, dockerProxyPattern, w, r, func(w http.ResponseWriter, r *http.Request, match []string) {
-      var ip string
-      row := db.QueryRow("SELECT container_ip FROM containers WHERE user_id=(SELECT id FROM users WHERE username=$1)", match[1])
-      err := row.Scan(&ip)
+      server.HandleSubdomainRegexp(domain, dockerProxyPattern, func(w http.ResponseWriter, r *http.Request, match []string) {
+        var ip string
+        row := db.QueryRow("SELECT container_ip FROM containers WHERE user_id=(SELECT id FROM users WHERE username=$1)", match[1])
+        err := row.Scan(&ip)
 
-      if err != nil {
-        http.Error(w, fmt.Sprintf("Failed get container: %s", err.Error()), http.StatusInternalServerError)
-        return
-      }
-      server.HandleProxy(w, r, fmt.Sprintf("http://%s:%s", ip, match[2]))
-      handled = true
-    })
+        if err != nil {
+          http.Error(w, fmt.Sprintf("Failed get container: %s", err.Error()), http.StatusInternalServerError)
+          return
+        }
+        server.HandleProxy(w, r, fmt.Sprintf("http://%s:%s", ip, match[2]))
+      }),
+    )(w, r)
 
-    if handled {
-      return
+    if !handled {
+      http.NotFound(w, r)
     }
-
-    http.NotFound(w, r)
   })
 
   err := http.ListenAndServe(":8080", nil)

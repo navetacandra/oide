@@ -10,6 +10,19 @@ import (
   "time"
 )
 
+type HandlerFunc func(w http.ResponseWriter, r *http.Request) bool
+
+func HandlerChain(handlers ...HandlerFunc) HandlerFunc {
+  return func(w http.ResponseWriter, r *http.Request) bool {
+    for _, handler := range handlers {
+      if handler(w, r) {
+        return true
+      }
+    }
+    return false
+  }
+}
+
 var re = regexp.MustCompile(`^((.*)\.)?localhost(:\d+)$`)
 func ParseSubdomain(domain string, r *http.Request) string {
   if domain != "localhost" {
@@ -27,23 +40,34 @@ func ParseSubdomain(domain string, r *http.Request) string {
   return subdomain
 }
 
-func HandleSubdomain(domain string, subdomain string, w http.ResponseWriter, r *http.Request, handler func(w http.ResponseWriter, r *http.Request)) {
-  if subdomain == ParseSubdomain(domain, r) {
-    handler(w, r)
+func HandleSubdomain(domain string, subdomain string, handler HandlerFunc) HandlerFunc {
+  return func(w http.ResponseWriter, r *http.Request) bool { 
+    if subdomain == ParseSubdomain(domain, r) {
+      return handler(w, r)
+    }
+    return false
   }
 }
 
-func HandleSubdomainRegexp(domain string, subdomain *regexp.Regexp, w http.ResponseWriter, r *http.Request, handler func(w http.ResponseWriter, r *http.Request, match []string)) {
-  sub := ParseSubdomain(domain, r)
-  match := subdomain.FindStringSubmatch(sub)
-  if match != nil {
-    handler(w, r, match)
+func HandleSubdomainRegexp(domain string, subdomain *regexp.Regexp, handler func(http.ResponseWriter, *http.Request, []string)) HandlerFunc {
+  return func(w http.ResponseWriter, r *http.Request) bool { 
+    sub := ParseSubdomain(domain, r)
+    match := subdomain.FindStringSubmatch(sub)
+    if match != nil {
+      handler(w, r, match)
+      return true
+    }
+    return false
   }
 }
 
-func HandlePath(path string, w http.ResponseWriter, r *http.Request, handler func(w http.ResponseWriter, r *http.Request)) {
-  if r.URL.Path == path {
-    handler(w, r)
+func HandlePath(path string, handler func(http.ResponseWriter, *http.Request)) HandlerFunc {
+  return func(w http.ResponseWriter, r *http.Request) bool { 
+    if r.URL.Path == path {
+      handler(w, r)
+      return true
+    }
+    return false
   }
 }
 
