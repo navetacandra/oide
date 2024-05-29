@@ -22,6 +22,7 @@ type Service struct {
 }
 
 type Config struct {
+  RequireAuth    bool
 	AuthPassEnvVar string
 	AuthUserEnvVar string
 	ProjectRoot    string
@@ -42,9 +43,10 @@ type HandlerReq struct {
 
 var (
 	DefaultConfig = Config{
-		AuthPassEnvVar: "",
-		AuthUserEnvVar: "",
-		ProjectRoot:    "/home",
+    RequireAuth:    true,
+		AuthPassEnvVar: "tesaja",
+		AuthUserEnvVar: "navetacandra",
+		ProjectRoot:    "/home/navetacandra/projects/oide/repos/",
 		GitBinPath:     "/usr/bin/git",
 		UploadPack:     true,
 		ReceivePack:    true,
@@ -118,12 +120,12 @@ func serviceRpc(hr HandlerReq) {
 	w, r, rpc, dir := hr.w, hr.r, hr.Rpc, hr.Dir
 	access := hasAccess(r, dir, rpc, true)
 
-	if access == false {
+	if !access {
 		renderNoAccess(w)
 		return
 	}
 
-	w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", rpc))
+  w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", rpc))
 	w.Header().Set("Connection", "Keep-Alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -132,14 +134,14 @@ func serviceRpc(hr HandlerReq) {
 	env := os.Environ()
 
 	user, password, authok := r.BasicAuth()
-	if authok {
-		if DefaultConfig.AuthUserEnvVar != "" {
-			env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthUserEnvVar, user))
-		}
-		if DefaultConfig.AuthPassEnvVar != "" {
-			env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthPassEnvVar, password))
-		}
-	}
+  if authok {
+    if DefaultConfig.AuthUserEnvVar != "" {
+      env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthUserEnvVar, user))
+    }
+    if DefaultConfig.AuthPassEnvVar != "" {
+      env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthPassEnvVar, password))
+    }
+  }
 
 	args := []string{rpc, "--stateless-rpc", dir}
 	cmd := exec.Command(DefaultConfig.GitBinPath, args...)
@@ -214,6 +216,17 @@ func getInfoRefs(hr HandlerReq) {
 	service_name := getServiceType(r)
 	access := hasAccess(r, dir, service_name, false)
 	version := r.Header.Get("Git-Protocol")
+
+  user, password, authok := r.BasicAuth()
+  if DefaultConfig.RequireAuth && !authok {
+    renderAuthRequired(w)
+    return
+  }
+  if authok && user != DefaultConfig.AuthUserEnvVar || password != DefaultConfig.AuthPassEnvVar {
+    renderAuthFailed(w)
+    return
+  }
+
 	if access {
 		args := []string{service_name, "--stateless-rpc", "--advertise-refs", "."}
 		refs := gitCommand(dir, version, args...)
@@ -386,6 +399,17 @@ func renderNotFound(w http.ResponseWriter) {
 func renderNoAccess(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusForbidden)
 	w.Write([]byte("Forbidden"))
+}
+
+func renderAuthRequired(w http.ResponseWriter) {
+  w.Header().Set("Content-Type", "text/plain")
+  w.Header().Set("WWW-Authenticate", `Basic realm="authorization needed"`)
+  w.WriteHeader(http.StatusUnauthorized)
+  w.Write([]byte("401 Unauthorized"))
+}
+
+func renderAuthFailed(w http.ResponseWriter) {
+  w.WriteHeader(http.StatusUnauthorized)
 }
 
 // Packet-line handling function
