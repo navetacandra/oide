@@ -101,7 +101,7 @@ func main() {
         return true
       }),
 
-      server.HandleSubdomain(domain, "proxy", func(w http.ResponseWriter, r *http.Request) bool {
+      server.HandleSubdomain(domain, "git", func(w http.ResponseWriter, r *http.Request) bool {
         git.Handler(w, r, func(dir string, repo string, branch string) {
           fmt.Printf("Pushed to %s:%s to %s", repo, branch, dir)
         })
