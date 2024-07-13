@@ -8,7 +8,6 @@ import (
 	"os"
 	"regexp"
 	"time"
-
 	_ "github.com/lib/pq"
 	"github.com/navetacandra/oide/lib/cloudshell"
 	"github.com/navetacandra/oide/lib/docker"
@@ -102,32 +101,32 @@ func ErrorLoginForm(username string, usernameError string, passwordError string)
 }
 
 func InvalidateToken(db *sql.DB, w http.ResponseWriter, r *http.Request) bool {
-  cookie, err := r.Cookie("accesToken")
+  cookie, err := r.Cookie("accessToken")
   if err != nil {
     return true
   }
-  accesToken := cookie.Value
-  if accesToken == "" {
+  accessToken := cookie.Value
+  if accessToken == "" {
     return true
   }
   cookie.Expires = time.Now().Add(time.Hour * -1)
   http.SetCookie(w, cookie)
-  _, err = db.Exec("DELETE FROM tokens WHERE token = $1", accesToken)
+  _, err = db.Exec("DELETE FROM tokens WHERE token = $1", accessToken)
   return true
 }
 
 func ValidateToken(db *sql.DB, w http.ResponseWriter, r *http.Request) bool {
-  cookie, err := r.Cookie("accesToken")
+  cookie, err := r.Cookie("accessToken")
   if err != nil {
     return false
   }
-  accesToken := cookie.Value
-  if accesToken == "" {
+  accessToken := cookie.Value
+  if accessToken == "" {
     return false
   }
   var id int
   var expire int64
-  err = db.QueryRow("SELECT id, expire FROM tokens WHERE token = $1", accesToken).Scan(&id, &expire)
+  err = db.QueryRow("SELECT id, expire FROM tokens WHERE token = $1", accessToken).Scan(&id, &expire)
   if err != nil || expire < time.Now().Unix() {
     InvalidateToken(db, w, r)
     return false
@@ -263,7 +262,7 @@ func main() {
                   token := GenerateToken(uid, time.Now().Unix())
                   expire := time.Now().Add(365 * 24 * time.Hour)
                   cookie := http.Cookie{}
-                  cookie.Name = "accesToken"
+                  cookie.Name = "accessToken"
                   cookie.Value = token
                   cookie.Expires = expire
                   http.SetCookie(w, &cookie)
@@ -275,7 +274,7 @@ func main() {
 							}
 						}),
 						server.HandlePath("/logout", func(w http.ResponseWriter, r *http.Request) {
-							currentCookie, _ := r.Cookie("accesToken")
+							currentCookie, _ := r.Cookie("accessToken")
               currentCookie.Expires = time.Now().Add(time.Hour * -1)
 
               db.Exec("DELETE FROM tokens WHERE token = $1", currentCookie.Value)
@@ -291,6 +290,14 @@ func main() {
 							}
 							fmt.Fprintf(w, "Hello, World!") 
 						}),
+            server.HandlePath("/terminal", func(w http.ResponseWriter, r *http.Request) {
+              if !ValidateToken(db, w, r) {
+                w.Header().Set("HX-Redirect", "/login")
+                http.Redirect(w, r, "/login", http.StatusSeeOther)
+                return
+              }
+              WriteHtml("./web/terminal.html", w, r)
+            }),
 					)(w, r) {
 						http.NotFound(w, r)
 					}
@@ -306,7 +313,23 @@ func main() {
 				}),
 
 				server.HandleSubdomain(domain, "ssh", func(w http.ResponseWriter, r *http.Request) bool {
-					cloudshell.Handle(w, r, 10*time.Second, []string{"bash", "-l"})
+          accessToken := r.URL.Query().Get("token")
+          if accessToken == "" {
+            http.Redirect(w, r, "/login", http.StatusSeeOther)
+            return true
+          }
+          var username string
+          var uid string
+          var expire int64
+          err := db.QueryRow("SELECT tokens.user_id, tokens.expire, users.username FROM tokens INNER JOIN users ON tokens.user_id=users.id WHERE token = $1", accessToken).Scan(&uid, &expire, &username)
+          if err != nil || expire < time.Now().Unix() {
+            _, err = db.Exec("DELETE FROM tokens WHERE token = $1", accessToken)
+            http.Redirect(w, r, "/login", http.StatusSeeOther)
+            return true
+          }
+
+          dockerContainer := fmt.Sprintf("%s-playground", username)
+          cloudshell.Handle(w, r, 10*time.Second, []string{"docker", "exec", "-it", dockerContainer, "ash", "-l"})
 					return true
 				}),
 
