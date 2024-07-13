@@ -22,7 +22,7 @@ type Service struct {
 }
 
 type Config struct {
-  RequireAuth    bool
+	RequireAuth    bool
 	AuthPassEnvVar string
 	AuthUserEnvVar string
 	ProjectRoot    string
@@ -43,7 +43,7 @@ type HandlerReq struct {
 
 var (
 	DefaultConfig = Config{
-    RequireAuth:    true,
+		RequireAuth:    true,
 		AuthPassEnvVar: "tesaja",
 		AuthUserEnvVar: "navetacandra",
 		ProjectRoot:    "/home/navetacandra/projects/oide/repos/",
@@ -71,48 +71,48 @@ var services = map[string]Service{
 
 // Request handling function
 func Handler(w http.ResponseWriter, r *http.Request, onPush func(dir string, repo string, branch string)) {
-  // log.Printf("%s %s %s %s", r.RemoteAddr, r.Method, r.URL.Path, r.Proto)
-  for match, service := range services {
-    re, err := regexp.Compile(match)
-    if err != nil {
-      log.Print(err)
-    }
+	// log.Printf("%s %s %s %s", r.RemoteAddr, r.Method, r.URL.Path, r.Proto)
+	for match, service := range services {
+		re, err := regexp.Compile(match)
+		if err != nil {
+			log.Print(err)
+		}
 
-    if m := re.FindStringSubmatch(r.URL.Path); m != nil {
-      if service.Method != r.Method {
-        renderMethodNotAllowed(w, r)
-        return
-      }
+		if m := re.FindStringSubmatch(r.URL.Path); m != nil {
+			if service.Method != r.Method {
+				renderMethodNotAllowed(w, r)
+				return
+			}
 
-      rpc := service.Rpc
-      file := strings.Replace(r.URL.Path, m[1]+"/", "", 1)
-      dir, err := getGitDir(m[1])
+			rpc := service.Rpc
+			file := strings.Replace(r.URL.Path, m[1]+"/", "", 1)
+			dir, err := getGitDir(m[1])
 
-      if err != nil {
-        log.Print(err)
-        renderNotFound(w)
-        return
-      }
+			if err != nil {
+				log.Print(err)
+				renderNotFound(w)
+				return
+			}
 
-      hr := HandlerReq{w, r, rpc, dir, file}
-      service.Handler(hr)
-      if rpc == "receive-pack" && onPush != nil {
-        cmd := exec.Command(DefaultConfig.GitBinPath, "rev-parse", "--abbrev-ref", "HEAD")
-        cmd.Dir = dir
-        cmd.Env = os.Environ()
-        pushedBranch, err := cmd.Output()
-        if err != nil {
-          log.Printf("Error get pushed branch: %s", err)
-          onPush(dir, string(m[1]), "")
-          return
-        }
-        onPush(dir, string(m[1]), string(pushedBranch)[:len(pushedBranch)-1])
-      }
-      return
-    }
-  }
-  renderNotFound(w)
-  return
+			hr := HandlerReq{w, r, rpc, dir, file}
+			service.Handler(hr)
+			if rpc == "receive-pack" && onPush != nil {
+				cmd := exec.Command(DefaultConfig.GitBinPath, "rev-parse", "--abbrev-ref", "HEAD")
+				cmd.Dir = dir
+				cmd.Env = os.Environ()
+				pushedBranch, err := cmd.Output()
+				if err != nil {
+					log.Printf("Error get pushed branch: %s", err)
+					onPush(dir, string(m[1]), "")
+					return
+				}
+				onPush(dir, string(m[1]), string(pushedBranch)[:len(pushedBranch)-1])
+			}
+			return
+		}
+	}
+	renderNotFound(w)
+	return
 }
 
 // Actual command handling functions
@@ -125,7 +125,7 @@ func serviceRpc(hr HandlerReq) {
 		return
 	}
 
-  w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", rpc))
+	w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-result", rpc))
 	w.Header().Set("Connection", "Keep-Alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -134,25 +134,25 @@ func serviceRpc(hr HandlerReq) {
 	env := os.Environ()
 
 	user, password, authok := r.BasicAuth()
-  if authok {
-    if DefaultConfig.AuthUserEnvVar != "" {
-      env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthUserEnvVar, user))
-    }
-    if DefaultConfig.AuthPassEnvVar != "" {
-      env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthPassEnvVar, password))
-    }
-  }
+	if authok {
+		if DefaultConfig.AuthUserEnvVar != "" {
+			env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthUserEnvVar, user))
+		}
+		if DefaultConfig.AuthPassEnvVar != "" {
+			env = append(env, fmt.Sprintf("%s=%s", DefaultConfig.AuthPassEnvVar, password))
+		}
+	}
 
 	args := []string{rpc, "--stateless-rpc", dir}
 	cmd := exec.Command(DefaultConfig.GitBinPath, args...)
 	version := r.Header.Get("Git-Protocol")
-	
+
 	cmd.Dir = dir
 	cmd.Env = env
 	if len(version) != 0 {
 		cmd.Env = append(env, fmt.Sprintf("GIT_PROTOCOL=%s", version))
 	}
-	
+
 	DefaultConfig.CommandFunc(cmd)
 
 	in, err := cmd.StdinPipe()
@@ -205,10 +205,10 @@ func serviceRpc(hr HandlerReq) {
 	}
 
 	cmd.Wait()
-  fmt.Printf("Service %s done\n", rpc)
-  if rpc == "receive-pack" {
-    fmt.Println("Operation: push repo")
-  }
+	fmt.Printf("Service %s done\n", rpc)
+	if rpc == "receive-pack" {
+		fmt.Println("Operation: push repo")
+	}
 }
 
 func getInfoRefs(hr HandlerReq) {
@@ -217,15 +217,15 @@ func getInfoRefs(hr HandlerReq) {
 	access := hasAccess(r, dir, service_name, false)
 	version := r.Header.Get("Git-Protocol")
 
-  user, password, authok := r.BasicAuth()
-  if DefaultConfig.RequireAuth && !authok {
-    renderAuthRequired(w)
-    return
-  }
-  if authok && user != DefaultConfig.AuthUserEnvVar || password != DefaultConfig.AuthPassEnvVar {
-    renderAuthFailed(w)
-    return
-  }
+	user, password, authok := r.BasicAuth()
+	if DefaultConfig.RequireAuth && !authok {
+		renderAuthRequired(w)
+		return
+	}
+	if authok && user != DefaultConfig.AuthUserEnvVar || password != DefaultConfig.AuthPassEnvVar {
+		renderAuthFailed(w)
+		return
+	}
 
 	if access {
 		args := []string{service_name, "--stateless-rpc", "--advertise-refs", "."}
@@ -402,14 +402,14 @@ func renderNoAccess(w http.ResponseWriter) {
 }
 
 func renderAuthRequired(w http.ResponseWriter) {
-  w.Header().Set("Content-Type", "text/plain")
-  w.Header().Set("WWW-Authenticate", `Basic realm="authorization needed"`)
-  w.WriteHeader(http.StatusUnauthorized)
-  w.Write([]byte("401 Unauthorized"))
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("WWW-Authenticate", `Basic realm="authorization needed"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte("401 Unauthorized"))
 }
 
 func renderAuthFailed(w http.ResponseWriter) {
-  w.WriteHeader(http.StatusUnauthorized)
+	w.WriteHeader(http.StatusUnauthorized)
 }
 
 // Packet-line handling function
