@@ -22,7 +22,7 @@ func CreatePlaygroundContainer(db *sql.DB, username string) bool {
 		return false
 	}
 
-	row := tx.QueryRow("SELECT MAX(container_ip)::inet+1 AS ip, MAX(ssh_port)+1 AS port FROM playground-containers LIMIT 1")
+	row := tx.QueryRow("SELECT SPLIT_PART(COALESCE(MAX(container_ip)::INET + 1, '172.30.0.2'::INET)::TEXT, '/', 1) AS ip, COALESCE(MAX(ssh_port) + 1, 1022) AS port FROM playground_containers")
 	err = row.Scan(&ip, &port)
 
 	if err != nil {
@@ -40,7 +40,7 @@ func CreatePlaygroundContainer(db *sql.DB, username string) bool {
 		"-m", "100m",
 		"--cpus", "0.05",
 		"-p", fmt.Sprintf("%d:22", port),
-		"-d", "oide-playground",
+		"-d", "oide",
 	)
 	if err != nil {
 		fmt.Printf("Error execute command: %v\n", err)
@@ -52,10 +52,8 @@ func CreatePlaygroundContainer(db *sql.DB, username string) bool {
 		fmt.Printf("Error inspect container: %v\n", err)
 		return false
 	}
-	fmt.Printf("ID: %s\nPath: %s\n", container_id[:len(container_id)-1], container_storage[:len(container_storage)-1])
-
 	_, err = tx.Exec(
-		"INSERT INTO playground-containers (user_id, container_id, container_ip, container_storage, ssh_port) VALUES ((SELECT id FROM users WHERE username = $1), $2, $3, $4, $5)",
+		"INSERT INTO playground_containers (user_id, container_id, container_ip, storage_path, ssh_port) VALUES ((SELECT id FROM users WHERE username = $1), $2, $3, $4, $5)",
 		username, container_id[:len(container_id)-1], ip, container_storage[:len(container_storage)-1], port,
 	)
 	if err != nil {
